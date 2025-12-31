@@ -4,7 +4,8 @@ import json
 import os
 import sys
 
-# ================== TOKEN SEGURO ==================
+# ================== CONFIG ==================
+GUILD_ID = 123456789012345678  # <<< ID DO SEU SERVIDOR
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
@@ -56,8 +57,6 @@ class AdminActions(discord.ui.View):
                 f"✅ **Pagamento Aprovado!**\n{membro.mention}, **aguarde estamos preparando seu produto!**"
             )
             await interaction.response.send_message("Confirmado!", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Cliente saiu do servidor.", ephemeral=True)
 
     @discord.ui.button(label="Fechar Carrinho", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -79,8 +78,7 @@ class ProduUpView(discord.ui.View):
 
         select = discord.ui.Select(
             placeholder="📦 Escolha o seu pacote de salas",
-            options=options,
-            custom_id="select_produup"
+            options=options
         )
         select.callback = self.select_callback
         self.add_item(select)
@@ -110,8 +108,17 @@ class ProduUpView(discord.ui.View):
 
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                inter.user: discord.PermissionOverwrite(view_channel=True),
-                guild.get_role(cfg["cargo_owner"]): discord.PermissionOverwrite(view_channel=True)
+                inter.user: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    read_message_history=True
+                ),
+                guild.get_role(cfg["cargo_owner"]): discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True
+                )
             }
 
             canal = await guild.create_text_channel(
@@ -149,12 +156,14 @@ class ProduUpView(discord.ui.View):
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        await self.tree.sync()
+        guild = discord.Object(id=GUILD_ID)
+        self.tree.clear_commands(guild=guild)
+        await self.tree.sync(guild=guild)
+        print("✅ Slash commands sincronizados na guild")
 
 bot = MyBot()
 
