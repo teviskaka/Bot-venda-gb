@@ -4,25 +4,20 @@ import json
 import os
 import sys
 
-# ================== CONFIG ==================
-GUILD_ID = 1361129837238157472  # <<< ID DO SEU SERVIDOR AQUI
+# ================== TOKEN SEGURO ==================
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    print("❌ ERRO: Variável DISCORD_TOKEN não definida")
+    print("❌ ERRO: Variável de ambiente DISCORD_TOKEN não definida.")
     sys.exit(1)
 
+# ================== ARQUIVO DB ==================
 DB_FILE = "database.json"
 
-# ================== DATABASE ==================
 def load_db():
     if not os.path.exists(DB_FILE):
         return {
-            "config": {
-                "pix": "Não configurado",
-                "cargo_owner": None,
-                "cat_suporte": None
-            },
+            "config": {"pix": "Não configurado", "cargo_owner": None, "cat_suporte": None},
             "produtos": {}
         }
     with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -34,7 +29,7 @@ def save_db(data):
 
 db = load_db()
 
-# ================== PACOTES ==================
+# ================== DADOS PRODUUP ==================
 PACOTES_SALAS = {
     "50": {"label": "10 Salas 💎", "preco": "R$ 3,00", "mensagem": "Crie Sala Automaticamente!"},
     "100": {"label": "30 Salas 💎", "preco": "R$ 6,00", "mensagem": "Crie Sala Automaticamente!"},
@@ -43,130 +38,149 @@ PACOTES_SALAS = {
     "1000": {"label": "300 Salas 💎", "preco": "R$ 60,00", "mensagem": "Crie Sala Automaticamente!"}
 }
 
-# ================== ADMIN VIEW ==================
+# ================== VIEW ADMIN ==================
 class AdminActions(discord.ui.View):
-    def __init__(self, cliente_id):
+    def __init__(self, cliente_id, produto_nome):
         super().__init__(timeout=None)
         self.cliente_id = cliente_id
+        self.produto = produto_nome
 
     @discord.ui.button(label="Aprovar Pagamento", style=discord.ButtonStyle.success, emoji="✅")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if db["config"]["cargo_owner"] not in [r.id for r in interaction.user.roles]:
-            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+        if not any(r.id == db["config"]["cargo_owner"] for r in interaction.user.roles):
+            return await interaction.response.send_message("❌ Apenas o dono pode aprovar.", ephemeral=True)
 
         membro = interaction.guild.get_member(self.cliente_id)
         if membro:
-            await interaction.channel.send(f"✅ Pagamento aprovado! {membro.mention}")
-        await interaction.response.send_message("Confirmado!", ephemeral=True)
+            await interaction.channel.send(
+                f"✅ **Pagamento Aprovado!**\n{membro.mention}, **aguarde estamos preparando seu produto!**"
+            )
+            await interaction.response.send_message("Confirmado!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Cliente saiu do servidor.", ephemeral=True)
 
     @discord.ui.button(label="Fechar Carrinho", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if db["config"]["cargo_owner"] not in [r.id for r in interaction.user.roles]:
+        if not any(r.id == db["config"]["cargo_owner"] for r in interaction.user.roles):
             return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
         await interaction.channel.delete()
 
-# ================== PRODUUP VIEW ==================
+# ================== VIEW PRODUUP ==================
 class ProduUpView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-
         options = [
             discord.SelectOption(
-                label=f"{v['label']} - {v['preco']}",
-                description=v["mensagem"],
-                value=k
-            ) for k, v in PACOTES_SALAS.items()
+                label=f"{data['label']} - {data['preco']}",
+                description=data["mensagem"],
+                value=v
+            ) for v, data in PACOTES_SALAS.items()
         ]
 
         select = discord.ui.Select(
-            placeholder="📦 Escolha seu pacote",
-            options=options
+            placeholder="📦 Escolha o seu pacote de salas",
+            options=options,
+            custom_id="select_produup"
         )
         select.callback = self.select_callback
         self.add_item(select)
 
     async def select_callback(self, interaction: discord.Interaction):
-        escolha = interaction.data["values"][0]
-        data = PACOTES_SALAS[escolha]
-        cfg = db["config"]
-
-        guild = interaction.guild
-        categoria = guild.get_channel(cfg["cat_suporte"])
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True),
-            guild.get_role(cfg["cargo_owner"]): discord.PermissionOverwrite(view_channel=True)
-        }
-
-        canal = await guild.create_text_channel(
-            name=f"🆙-{interaction.user.name}",
-            category=categoria,
-            overwrites=overwrites
-        )
+        value = interaction.data["values"][0]
+        data = PACOTES_SALAS[value]
 
         embed = discord.Embed(
-            title="💳 Pagamento PIX",
+            title="📊 Pacote Selecionado",
             description=(
-                f"Produto: **{data['label']}**\n"
-                f"Valor: **{data['preco']}**\n\n"
-                f"Pix: `{cfg['pix']}`\n\n"
-                "📢 Envie o comprovante abaixo"
+                f"Pacote: **{data['label']}**\n"
+                f"Preço: **{data['preco']}**\n\n"
+                "Clique no botão abaixo para abrir o carrinho."
             ),
-            color=discord.Color.blue()
+            color=discord.Color.orange()
         )
 
-        await canal.send(
-            content=interaction.user.mention,
-            embed=embed,
-            view=AdminActions(interaction.user.id)
-        )
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1447763890225287269/1455736408898797729/ChatGPT_Image_30_de_dez._de_2025_22_36_10.png")
 
-        await interaction.response.send_message(
-            f"✅ Carrinho criado: {canal.mention}",
-            ephemeral=True
-        )
+        btn = discord.ui.Button(label="Abrir Carrinho", style=discord.ButtonStyle.green, emoji="🛒")
+
+        async def abrir(inter):
+            cfg = db["config"]
+            guild = inter.guild
+            categoria = guild.get_channel(cfg["cat_suporte"])
+
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                inter.user: discord.PermissionOverwrite(view_channel=True),
+                guild.get_role(cfg["cargo_owner"]): discord.PermissionOverwrite(view_channel=True)
+            }
+
+            canal = await guild.create_text_channel(
+                name=f"🆙-{inter.user.name}",
+                category=categoria,
+                overwrites=overwrites
+            )
+
+            emb = discord.Embed(
+                title="💳 Pagamento PIX",
+                description=(
+                    f"Produto: **{data['label']}**\n"
+                    f"Valor: **{data['preco']}**\n\n"
+                    f"Pix: `{cfg['pix']}`\n\n"
+                    "📢 **ENVIE O COMPROVANTE AQUI!**"
+                ),
+                color=discord.Color.blue()
+            )
+
+            await canal.send(
+                content=inter.user.mention,
+                embed=emb,
+                view=AdminActions(inter.user.id, data["label"])
+            )
+
+            await inter.response.send_message(f"✅ Carrinho criado: {canal.mention}", ephemeral=True)
+
+        btn.callback = abrir
+        view = discord.ui.View()
+        view.add_item(btn)
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 # ================== BOT ==================
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.message_content = True
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        self.tree.clear_commands(guild=guild)
-        await self.tree.sync(guild=guild)
-        print("✅ Slash commands sincronizados na guild")
+        await self.tree.sync()
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f"🤖 Online como {bot.user}")
+    print(f"✅ Bot online como {bot.user}")
 
-# ================== COMMANDS ==================
-@bot.tree.command(name="setup", description="Configura o sistema")
-async def setup(
-    interaction: discord.Interaction,
-    pix: str,
-    cargo_admin: discord.Role,
-    categoria: discord.CategoryChannel
-):
-    db["config"]["pix"] = pix
-    db["config"]["cargo_owner"] = cargo_admin.id
-    db["config"]["cat_suporte"] = categoria.id
+# ================== COMANDOS ==================
+@bot.tree.command(name="setup", description="Configura PIX e Admin")
+async def setup(interaction: discord.Interaction, pix: str, cargo_admin: discord.Role, categoria: discord.CategoryChannel):
+    db["config"].update({
+        "pix": pix,
+        "cargo_owner": cargo_admin.id,
+        "cat_suporte": categoria.id
+    })
     save_db(db)
-    await interaction.response.send_message("✅ Configurado com sucesso!", ephemeral=True)
+    await interaction.response.send_message("✅ Configurado!", ephemeral=True)
 
-@bot.tree.command(name="produup", description="Abrir menu de pacotes")
+@bot.tree.command(name="produup", description="Menu de pacotes de salas")
 async def produup(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🚀 SALAS AUTOMÁTICAS - GB STORE",
-        description="Escolha um pacote abaixo para continuar.",
-        color=discord.Color.orange()
+        title="SALAS AUTOMATICAS! - GB STORE",
+        description="Selecione o pacote desejado no menu abaixo para prosseguir com a compra.",
+        color=discord.Color.blue()
     )
+    embed.set_image(url="https://cdn.discordapp.com/attachments/1447763890225287269/1455736408898797729/ChatGPT_Image_30_de_dez._de_2025_22_36_10.png")
     await interaction.response.send_message(embed=embed, view=ProduUpView())
 
 bot.run(TOKEN)
